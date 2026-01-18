@@ -2,6 +2,7 @@ __kernel void vector_add(__global const float* A,
     __global const float* B,
     __global float* C)
 {
-    int id = get_global_id(0); // Глобальный индекс
-    C[id] = A[id] + B[id];     // Сложение элементов
+    int id = get_global_id(0);  // Р“Р»РѕР±Р°Р»СЊРЅС‹Р№ РёРЅРґРµРєСЃ
+    C[id] = A[id] + B[id];     // РЎР»РѕР¶РµРЅРёРµ СЌР»РµРјРµРЅС‚РѕРІ
 }
+
