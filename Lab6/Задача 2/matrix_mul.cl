@@ -1,16 +1,16 @@
-// Ядро для параллельного умножения матриц
+// РЇРґСЂРѕ РґР»СЏ РїР°СЂР°Р»Р»РµР»СЊРЅРѕРіРѕ СѓРјРЅРѕР¶РµРЅРёСЏ РјР°С‚СЂРёС†
 __kernel void matrix_mul(
-    __global const float* A,  // Матрица A (N x M)
-    __global const float* B,  // Матрица B (M x K)
-    __global float* C,        // Результат C (N x K)
-    const int N,              // Строки A
-    const int M,              // Столбцы A / строки B
-    const int K               // Столбцы B
+    __global const float* A,  // РњР°С‚СЂРёС†Р° A (N x M)
+    __global const float* B,  // РњР°С‚СЂРёС†Р° B (M x K)
+    __global float* C,        // Р РµР·СѓР»СЊС‚Р°С‚ C (N x K)
+    const int N,              // РЎС‚СЂРѕРєРё A
+    const int M,              // РЎС‚РѕР»Р±С†С‹ A / СЃС‚СЂРѕРєРё B
+    const int K               // РЎС‚РѕР»Р±С†С‹ B
 ) {
-    int row = get_global_id(0); // индекс строки
-    int col = get_global_id(1); // индекс столбца
+    int row = get_global_id(0); // РёРЅРґРµРєСЃ СЃС‚СЂРѕРєРё
+    int col = get_global_id(1); // РёРЅРґРµРєСЃ СЃС‚РѕР»Р±С†Р°
 
-    if (row < N && col < K) {    // защита от лишних потоков
+    if (row < N && col < K) {    // Р·Р°С‰РёС‚Р° РѕС‚ Р»РёС€РЅРёС… РїРѕС‚РѕРєРѕРІ
         float sum = 0.0f;
         for (int i = 0; i < M; ++i) {
             sum += A[row * M + i] * B[i * K + col];
