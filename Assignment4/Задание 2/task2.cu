@@ -2,219 +2,219 @@
 #include <iostream>
 #include <chrono>
 
-// Функция для проверки ошибок CUDA
+// Р¤СѓРЅРєС†РёСЏ РґР»СЏ РїСЂРѕРІРµСЂРєРё РѕС€РёР±РѕРє CUDA
 #define CUDA_CHECK(call) \
     do { \
         cudaError_t err = call; \
         if (err != cudaSuccess) { \
-            std::cerr << "Ошибка CUDA: " << cudaGetErrorString(err) \
-                      << " в " << __FILE__ << ":" << __LINE__ << std::endl; \
+            std::cerr << "РћС€РёР±РєР° CUDA: " << cudaGetErrorString(err) \
+                      << " РІ " << __FILE__ << ":" << __LINE__ << std::endl; \
             exit(EXIT_FAILURE); \
         } \
     } while(0)
 
-// Последовательная версия на CPU для сравнения
+// РџРѕСЃР»РµРґРѕРІР°С‚РµР»СЊРЅР°СЏ РІРµСЂСЃРёСЏ РЅР° CPU РґР»СЏ СЃСЂР°РІРЅРµРЅРёСЏ
 void prefixSumCPU(const int* input, int* output, int n) {
-    output[0] = input[0]; // Первый элемент остается таким же
-    // Каждый следующий элемент - это сумма текущего и всех предыдущих
+    output[0] = input[0]; // РџРµСЂРІС‹Р№ СЌР»РµРјРµРЅС‚ РѕСЃС‚Р°РµС‚СЃСЏ С‚Р°РєРёРј Р¶Рµ
+    // РљР°Р¶РґС‹Р№ СЃР»РµРґСѓСЋС‰РёР№ СЌР»РµРјРµРЅС‚ - СЌС‚Рѕ СЃСѓРјРјР° С‚РµРєСѓС‰РµРіРѕ Рё РІСЃРµС… РїСЂРµРґС‹РґСѓС‰РёС…
     for (int i = 1; i < n; i++) {
         output[i] = output[i - 1] + input[i];
     }
 }
 
-// Оптимизированное CUDA ядро - сканирование Kogge-Stone внутри блока
-// Это быстрый параллельный алгоритм для префиксной суммы
+// РћРїС‚РёРјРёР·РёСЂРѕРІР°РЅРЅРѕРµ CUDA СЏРґСЂРѕ - СЃРєР°РЅРёСЂРѕРІР°РЅРёРµ Kogge-Stone РІРЅСѓС‚СЂРё Р±Р»РѕРєР°
+// Р­С‚Рѕ Р±С‹СЃС‚СЂС‹Р№ РїР°СЂР°Р»Р»РµР»СЊРЅС‹Р№ Р°Р»РіРѕСЂРёС‚Рј РґР»СЏ РїСЂРµС„РёРєСЃРЅРѕР№ СЃСѓРјРјС‹
 __global__ void blockScanKernel(int* data, int* blockSums, int n) {
-    // Выделяем разделяемую память для блока (быстрая память на GPU)
+    // Р’С‹РґРµР»СЏРµРј СЂР°Р·РґРµР»СЏРµРјСѓСЋ РїР°РјСЏС‚СЊ РґР»СЏ Р±Р»РѕРєР° (Р±С‹СЃС‚СЂР°СЏ РїР°РјСЏС‚СЊ РЅР° GPU)
     extern __shared__ int temp[];
 
-    int tid = threadIdx.x; // Локальный индекс потока в блоке
-    int idx = blockIdx.x * blockDim.x + threadIdx.x; // Глобальный индекс
+    int tid = threadIdx.x; // Р›РѕРєР°Р»СЊРЅС‹Р№ РёРЅРґРµРєСЃ РїРѕС‚РѕРєР° РІ Р±Р»РѕРєРµ
+    int idx = blockIdx.x * blockDim.x + threadIdx.x; // Р“Р»РѕР±Р°Р»СЊРЅС‹Р№ РёРЅРґРµРєСЃ
 
-    // Загружаем данные из глобальной памяти в разделяемую
+    // Р—Р°РіСЂСѓР¶Р°РµРј РґР°РЅРЅС‹Рµ РёР· РіР»РѕР±Р°Р»СЊРЅРѕР№ РїР°РјСЏС‚Рё РІ СЂР°Р·РґРµР»СЏРµРјСѓСЋ
     temp[tid] = (idx < n) ? data[idx] : 0;
-    __syncthreads(); // Ждем, пока все потоки загрузят данные
+    __syncthreads(); // Р–РґРµРј, РїРѕРєР° РІСЃРµ РїРѕС‚РѕРєРё Р·Р°РіСЂСѓР·СЏС‚ РґР°РЅРЅС‹Рµ
 
-    // Выполняем параллельное сканирование (алгоритм Kogge-Stone)
-    // На каждом шаге удваиваем расстояние между суммируемыми элементами
+    // Р’С‹РїРѕР»РЅСЏРµРј РїР°СЂР°Р»Р»РµР»СЊРЅРѕРµ СЃРєР°РЅРёСЂРѕРІР°РЅРёРµ (Р°Р»РіРѕСЂРёС‚Рј Kogge-Stone)
+    // РќР° РєР°Р¶РґРѕРј С€Р°РіРµ СѓРґРІР°РёРІР°РµРј СЂР°СЃСЃС‚РѕСЏРЅРёРµ РјРµР¶РґСѓ СЃСѓРјРјРёСЂСѓРµРјС‹РјРё СЌР»РµРјРµРЅС‚Р°РјРё
     for (int stride = 1; stride < blockDim.x; stride *= 2) {
         int val = 0;
         if (tid >= stride) {
-            val = temp[tid - stride]; // Берем элемент на расстоянии stride
+            val = temp[tid - stride]; // Р‘РµСЂРµРј СЌР»РµРјРµРЅС‚ РЅР° СЂР°СЃСЃС‚РѕСЏРЅРёРё stride
         }
-        __syncthreads(); // Синхронизация перед обновлением
+        __syncthreads(); // РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ РїРµСЂРµРґ РѕР±РЅРѕРІР»РµРЅРёРµРј
 
         if (tid >= stride) {
-            temp[tid] += val; // Добавляем к текущему элементу
+            temp[tid] += val; // Р”РѕР±Р°РІР»СЏРµРј Рє С‚РµРєСѓС‰РµРјСѓ СЌР»РµРјРµРЅС‚Сѓ
         }
-        __syncthreads(); // Синхронизация после обновления
+        __syncthreads(); // РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ РїРѕСЃР»Рµ РѕР±РЅРѕРІР»РµРЅРёСЏ
     }
 
-    // Записываем результат обратно в глобальную память
+    // Р—Р°РїРёСЃС‹РІР°РµРј СЂРµР·СѓР»СЊС‚Р°С‚ РѕР±СЂР°С‚РЅРѕ РІ РіР»РѕР±Р°Р»СЊРЅСѓСЋ РїР°РјСЏС‚СЊ
     if (idx < n) {
         data[idx] = temp[tid];
     }
 
-    // Последний поток каждого блока сохраняет сумму блока
+    // РџРѕСЃР»РµРґРЅРёР№ РїРѕС‚РѕРє РєР°Р¶РґРѕРіРѕ Р±Р»РѕРєР° СЃРѕС…СЂР°РЅСЏРµС‚ СЃСѓРјРјСѓ Р±Р»РѕРєР°
     if (blockSums != nullptr && tid == blockDim.x - 1) {
         blockSums[blockIdx.x] = temp[tid];
     }
 }
 
-// Ядро для добавления смещений к каждому блоку
+// РЇРґСЂРѕ РґР»СЏ РґРѕР±Р°РІР»РµРЅРёСЏ СЃРјРµС‰РµРЅРёР№ Рє РєР°Р¶РґРѕРјСѓ Р±Р»РѕРєСѓ
 __global__ void addBlockSums(int* data, int* blockSums, int n) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-    // Каждый блок (кроме первого) добавляет сумму всех предыдущих блоков
+    // РљР°Р¶РґС‹Р№ Р±Р»РѕРє (РєСЂРѕРјРµ РїРµСЂРІРѕРіРѕ) РґРѕР±Р°РІР»СЏРµС‚ СЃСѓРјРјСѓ РІСЃРµС… РїСЂРµРґС‹РґСѓС‰РёС… Р±Р»РѕРєРѕРІ
     if (idx < n && blockIdx.x > 0) {
         data[idx] += blockSums[blockIdx.x - 1];
     }
 }
 
-// Функция для запуска GPU вычислений
+// Р¤СѓРЅРєС†РёСЏ РґР»СЏ Р·Р°РїСѓСЃРєР° GPU РІС‹С‡РёСЃР»РµРЅРёР№
 void prefixSumGPU(const int* h_input, int* h_output, int n) {
-    int* d_input;  // Входные данные на GPU
-    int* d_output; // Выходные данные на GPU
+    int* d_input;  // Р’С…РѕРґРЅС‹Рµ РґР°РЅРЅС‹Рµ РЅР° GPU
+    int* d_output; // Р’С‹С…РѕРґРЅС‹Рµ РґР°РЅРЅС‹Рµ РЅР° GPU
     size_t bytes = n * sizeof(int);
 
-    // Выделяем память на GPU
+    // Р’С‹РґРµР»СЏРµРј РїР°РјСЏС‚СЊ РЅР° GPU
     CUDA_CHECK(cudaMalloc(&d_input, bytes));
     CUDA_CHECK(cudaMalloc(&d_output, bytes));
 
-    // Копируем входные данные с CPU на GPU
+    // РљРѕРїРёСЂСѓРµРј РІС…РѕРґРЅС‹Рµ РґР°РЅРЅС‹Рµ СЃ CPU РЅР° GPU
     CUDA_CHECK(cudaMemcpy(d_input, h_input, bytes, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_output, h_input, bytes, cudaMemcpyHostToDevice));
 
-    // Настройка параметров запуска
-    int threadsPerBlock = 256; // Количество потоков в блоке
-    int numBlocks = (n + threadsPerBlock - 1) / threadsPerBlock; // Количество блоков
-    int sharedMemSize = threadsPerBlock * sizeof(int); // Размер разделяемой памяти
+    // РќР°СЃС‚СЂРѕР№РєР° РїР°СЂР°РјРµС‚СЂРѕРІ Р·Р°РїСѓСЃРєР°
+    int threadsPerBlock = 256; // РљРѕР»РёС‡РµСЃС‚РІРѕ РїРѕС‚РѕРєРѕРІ РІ Р±Р»РѕРєРµ
+    int numBlocks = (n + threadsPerBlock - 1) / threadsPerBlock; // РљРѕР»РёС‡РµСЃС‚РІРѕ Р±Р»РѕРєРѕРІ
+    int sharedMemSize = threadsPerBlock * sizeof(int); // Р Р°Р·РјРµСЂ СЂР°Р·РґРµР»СЏРµРјРѕР№ РїР°РјСЏС‚Рё
 
-    // Массив для хранения сумм каждого блока
+    // РњР°СЃСЃРёРІ РґР»СЏ С…СЂР°РЅРµРЅРёСЏ СЃСѓРјРј РєР°Р¶РґРѕРіРѕ Р±Р»РѕРєР°
     int* d_blockSums;
     CUDA_CHECK(cudaMalloc(&d_blockSums, numBlocks * sizeof(int)));
 
-    // ШАГ 1: Вычисляем префиксную сумму внутри каждого блока
+    // РЁРђР“ 1: Р’С‹С‡РёСЃР»СЏРµРј РїСЂРµС„РёРєСЃРЅСѓСЋ СЃСѓРјРјСѓ РІРЅСѓС‚СЂРё РєР°Р¶РґРѕРіРѕ Р±Р»РѕРєР°
     blockScanKernel << <numBlocks, threadsPerBlock, sharedMemSize >> > (d_output, d_blockSums, n);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
 
-    // ШАГ 2: Вычисляем префиксную сумму сумм блоков
+    // РЁРђР“ 2: Р’С‹С‡РёСЃР»СЏРµРј РїСЂРµС„РёРєСЃРЅСѓСЋ СЃСѓРјРјСѓ СЃСѓРјРј Р±Р»РѕРєРѕРІ
     if (numBlocks > 1) {
-        // Копируем суммы блоков на CPU
+        // РљРѕРїРёСЂСѓРµРј СЃСѓРјРјС‹ Р±Р»РѕРєРѕРІ РЅР° CPU
         int* h_blockSums = new int[numBlocks];
         CUDA_CHECK(cudaMemcpy(h_blockSums, d_blockSums, numBlocks * sizeof(int), cudaMemcpyDeviceToHost));
 
-        // Вычисляем префиксную сумму на CPU (это быстро, т.к. блоков мало)
+        // Р’С‹С‡РёСЃР»СЏРµРј РїСЂРµС„РёРєСЃРЅСѓСЋ СЃСѓРјРјСѓ РЅР° CPU (СЌС‚Рѕ Р±С‹СЃС‚СЂРѕ, С‚.Рє. Р±Р»РѕРєРѕРІ РјР°Р»Рѕ)
         for (int i = 1; i < numBlocks; i++) {
             h_blockSums[i] += h_blockSums[i - 1];
         }
 
-        // Копируем обратно на GPU
+        // РљРѕРїРёСЂСѓРµРј РѕР±СЂР°С‚РЅРѕ РЅР° GPU
         CUDA_CHECK(cudaMemcpy(d_blockSums, h_blockSums, numBlocks * sizeof(int), cudaMemcpyHostToDevice));
         delete[] h_blockSums;
 
-        // ШАГ 3: Добавляем смещения к каждому блоку
+        // РЁРђР“ 3: Р”РѕР±Р°РІР»СЏРµРј СЃРјРµС‰РµРЅРёСЏ Рє РєР°Р¶РґРѕРјСѓ Р±Р»РѕРєСѓ
         addBlockSums << <numBlocks, threadsPerBlock >> > (d_output, d_blockSums, n);
         CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaDeviceSynchronize());
     }
 
-    // Копируем результаты обратно на CPU
+    // РљРѕРїРёСЂСѓРµРј СЂРµР·СѓР»СЊС‚Р°С‚С‹ РѕР±СЂР°С‚РЅРѕ РЅР° CPU
     CUDA_CHECK(cudaMemcpy(h_output, d_output, bytes, cudaMemcpyDeviceToHost));
 
-    // Освобождаем память GPU
+    // РћСЃРІРѕР±РѕР¶РґР°РµРј РїР°РјСЏС‚СЊ GPU
     CUDA_CHECK(cudaFree(d_input));
     CUDA_CHECK(cudaFree(d_output));
     CUDA_CHECK(cudaFree(d_blockSums));
 }
 
-// Функция для проверки корректности результатов
+// Р¤СѓРЅРєС†РёСЏ РґР»СЏ РїСЂРѕРІРµСЂРєРё РєРѕСЂСЂРµРєС‚РЅРѕСЃС‚Рё СЂРµР·СѓР»СЊС‚Р°С‚РѕРІ
 bool verifyResults(const int* cpu, const int* gpu, int n, int maxErrors = 10) {
     int errorCount = 0;
     for (int i = 0; i < n; i++) {
         if (cpu[i] != gpu[i]) {
             if (errorCount < maxErrors) {
-                std::cerr << "Несоответствие на позиции " << i
+                std::cerr << "РќРµСЃРѕРѕС‚РІРµС‚СЃС‚РІРёРµ РЅР° РїРѕР·РёС†РёРё " << i
                     << ": CPU=" << cpu[i] << ", GPU=" << gpu[i] << std::endl;
             }
             errorCount++;
         }
     }
     if (errorCount > maxErrors) {
-        std::cerr << "... и еще " << (errorCount - maxErrors) << " ошибок" << std::endl;
+        std::cerr << "... Рё РµС‰Рµ " << (errorCount - maxErrors) << " РѕС€РёР±РѕРє" << std::endl;
     }
     return errorCount == 0;
 }
 
 int main() {
-    const int N = 1000000; // Размер массива
+    const int N = 1000000; // Р Р°Р·РјРµСЂ РјР°СЃСЃРёРІР°
 
-    // Выделяем память на CPU
+    // Р’С‹РґРµР»СЏРµРј РїР°РјСЏС‚СЊ РЅР° CPU
     int* h_input = new int[N];
     int* h_output_cpu = new int[N];
     int* h_output_gpu = new int[N];
 
-    // Инициализируем входной массив (каждый элемент = 1 для простоты)
-    std::cout << "=== Задание 2: Префиксная сумма на CUDA ===" << std::endl << std::endl;
-    std::cout << "Инициализация массива..." << std::endl;
+    // РРЅРёС†РёР°Р»РёР·РёСЂСѓРµРј РІС…РѕРґРЅРѕР№ РјР°СЃСЃРёРІ (РєР°Р¶РґС‹Р№ СЌР»РµРјРµРЅС‚ = 1 РґР»СЏ РїСЂРѕСЃС‚РѕС‚С‹)
+    std::cout << "=== Р—Р°РґР°РЅРёРµ 2: РџСЂРµС„РёРєСЃРЅР°СЏ СЃСѓРјРјР° РЅР° CUDA ===" << std::endl << std::endl;
+    std::cout << "РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РјР°СЃСЃРёРІР°..." << std::endl;
     for (int i = 0; i < N; i++) {
-        h_input[i] = 1; // Простые данные: префиксная сумма даст 1,2,3,4...
+        h_input[i] = 1; // РџСЂРѕСЃС‚С‹Рµ РґР°РЅРЅС‹Рµ: РїСЂРµС„РёРєСЃРЅР°СЏ СЃСѓРјРјР° РґР°СЃС‚ 1,2,3,4...
     }
-    std::cout << "Массив инициализирован" << std::endl << std::endl;
+    std::cout << "РњР°СЃСЃРёРІ РёРЅРёС†РёР°Р»РёР·РёСЂРѕРІР°РЅ" << std::endl << std::endl;
 
-    std::cout << "Параметры:" << std::endl;
-    std::cout << "  Размер массива: " << N << " элементов" << std::endl;
-    std::cout << "  Размер данных: " << (N * sizeof(int) / (1024.0 * 1024.0)) << " МБ" << std::endl << std::endl;
+    std::cout << "РџР°СЂР°РјРµС‚СЂС‹:" << std::endl;
+    std::cout << "  Р Р°Р·РјРµСЂ РјР°СЃСЃРёРІР°: " << N << " СЌР»РµРјРµРЅС‚РѕРІ" << std::endl;
+    std::cout << "  Р Р°Р·РјРµСЂ РґР°РЅРЅС‹С…: " << (N * sizeof(int) / (1024.0 * 1024.0)) << " РњР‘" << std::endl << std::endl;
 
-    // ==================== ВЫЧИСЛЕНИЕ НА CPU ====================
-    std::cout << "[1] Вычисление на CPU..." << std::endl;
+    // ==================== Р’Р«Р§РРЎР›Р•РќРР• РќРђ CPU ====================
+    std::cout << "[1] Р’С‹С‡РёСЃР»РµРЅРёРµ РЅР° CPU..." << std::endl;
     auto start_cpu = std::chrono::high_resolution_clock::now();
     prefixSumCPU(h_input, h_output_cpu, N);
     auto end_cpu = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::milli> cpu_time = end_cpu - start_cpu;
-    std::cout << "    Время: " << cpu_time.count() << " мс" << std::endl << std::endl;
+    std::cout << "    Р’СЂРµРјСЏ: " << cpu_time.count() << " РјСЃ" << std::endl << std::endl;
 
-    // ==================== ВЫЧИСЛЕНИЕ НА GPU ====================
-    std::cout << "[2] Вычисление на GPU..." << std::endl;
+    // ==================== Р’Р«Р§РРЎР›Р•РќРР• РќРђ GPU ====================
+    std::cout << "[2] Р’С‹С‡РёСЃР»РµРЅРёРµ РЅР° GPU..." << std::endl;
     auto start_gpu = std::chrono::high_resolution_clock::now();
     prefixSumGPU(h_input, h_output_gpu, N);
     auto end_gpu = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::milli> gpu_time = end_gpu - start_gpu;
-    std::cout << "    Время: " << gpu_time.count() << " мс" << std::endl << std::endl;
+    std::cout << "    Р’СЂРµРјСЏ: " << gpu_time.count() << " РјСЃ" << std::endl << std::endl;
 
-    // ==================== ПРОВЕРКА КОРРЕКТНОСТИ ====================
-    std::cout << "=== Проверка корректности ===" << std::endl;
+    // ==================== РџР РћР’Р•Р РљРђ РљРћР Р Р•РљРўРќРћРЎРўР ====================
+    std::cout << "=== РџСЂРѕРІРµСЂРєР° РєРѕСЂСЂРµРєС‚РЅРѕСЃС‚Рё ===" << std::endl;
     if (verifyResults(h_output_cpu, h_output_gpu, N)) {
-        std::cout << "+ Результаты совпадают!" << std::endl;
+        std::cout << "+ Р РµР·СѓР»СЊС‚Р°С‚С‹ СЃРѕРІРїР°РґР°СЋС‚!" << std::endl;
     }
     else {
-        std::cout << "- Обнаружены расхождения в результатах" << std::endl;
+        std::cout << "- РћР±РЅР°СЂСѓР¶РµРЅС‹ СЂР°СЃС…РѕР¶РґРµРЅРёСЏ РІ СЂРµР·СѓР»СЊС‚Р°С‚Р°С…" << std::endl;
     }
     std::cout << std::endl;
 
-    // ==================== АНАЛИЗ ПРОИЗВОДИТЕЛЬНОСТИ ====================
-    std::cout << "=== Анализ производительности ===" << std::endl;
+    // ==================== РђРќРђР›РР— РџР РћРР—Р’РћР”РРўР•Р›Р¬РќРћРЎРўР ====================
+    std::cout << "=== РђРЅР°Р»РёР· РїСЂРѕРёР·РІРѕРґРёС‚РµР»СЊРЅРѕСЃС‚Рё ===" << std::endl;
     double speedup = cpu_time.count() / gpu_time.count();
 
-    std::cout << "Время CPU:  " << cpu_time.count() << " мс" << std::endl;
-    std::cout << "Время GPU:  " << gpu_time.count() << " мс" << std::endl;
+    std::cout << "Р’СЂРµРјСЏ CPU:  " << cpu_time.count() << " РјСЃ" << std::endl;
+    std::cout << "Р’СЂРµРјСЏ GPU:  " << gpu_time.count() << " РјСЃ" << std::endl;
 
     if (speedup > 1.0) {
-        std::cout << "\nРезультат: GPU быстрее в " << speedup << " раз" << std::endl;
+        std::cout << "\nР РµР·СѓР»СЊС‚Р°С‚: GPU Р±С‹СЃС‚СЂРµРµ РІ " << speedup << " СЂР°Р·" << std::endl;
     }
     else if (speedup > 0.5) {
-        std::cout << "\nРезультат: GPU и CPU показывают сопоставимую производительность" << std::endl;
-        std::cout << "Коэффициент: " << speedup << "x" << std::endl;
+        std::cout << "\nР РµР·СѓР»СЊС‚Р°С‚: GPU Рё CPU РїРѕРєР°Р·С‹РІР°СЋС‚ СЃРѕРїРѕСЃС‚Р°РІРёРјСѓСЋ РїСЂРѕРёР·РІРѕРґРёС‚РµР»СЊРЅРѕСЃС‚СЊ" << std::endl;
+        std::cout << "РљРѕСЌС„С„РёС†РёРµРЅС‚: " << speedup << "x" << std::endl;
     }
     else {
-        std::cout << "\nРезультат: CPU быстрее в " << (1.0 / speedup) << " раз" << std::endl;
-        std::cout << "Коэффициент: " << speedup << "x" << std::endl;
+        std::cout << "\nР РµР·СѓР»СЊС‚Р°С‚: CPU Р±С‹СЃС‚СЂРµРµ РІ " << (1.0 / speedup) << " СЂР°Р·" << std::endl;
+        std::cout << "РљРѕСЌС„С„РёС†РёРµРЅС‚: " << speedup << "x" << std::endl;
     }
     std::cout << std::endl;
 
 
-    // Освобождаем память
+    // РћСЃРІРѕР±РѕР¶РґР°РµРј РїР°РјСЏС‚СЊ
     delete[] h_input;
     delete[] h_output_cpu;
     delete[] h_output_gpu;
