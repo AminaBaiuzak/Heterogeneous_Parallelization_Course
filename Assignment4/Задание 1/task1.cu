@@ -3,7 +3,7 @@
 #include <chrono>
 #include <cuda_runtime.h>
 
-// Функция для проверки ошибок CUDA
+// Р¤СѓРЅРєС†РёСЏ РґР»СЏ РїСЂРѕРІРµСЂРєРё РѕС€РёР±РѕРє CUDA
 #define CHECK_CUDA_ERROR(call) { \
     cudaError_t err = call; \
     if (err != cudaSuccess) { \
@@ -13,16 +13,16 @@
     } \
 }
 
-// Ядро CUDA для вычисления суммы элементов в глобальной памяти
-// Используем алгоритм редукции (уменьшения)
+// РЇРґСЂРѕ CUDA РґР»СЏ РІС‹С‡РёСЃР»РµРЅРёСЏ СЃСѓРјРјС‹ СЌР»РµРјРµРЅС‚РѕРІ РІ РіР»РѕР±Р°Р»СЊРЅРѕР№ РїР°РјСЏС‚Рё
+// РСЃРїРѕР»СЊР·СѓРµРј Р°Р»РіРѕСЂРёС‚Рј СЂРµРґСѓРєС†РёРё (СѓРјРµРЅСЊС€РµРЅРёСЏ)
 __global__ void sumArrayGlobalMemory(float* array, float* result, int size) {
-    // Получаем глобальный индекс потока
+    // РџРѕР»СѓС‡Р°РµРј РіР»РѕР±Р°Р»СЊРЅС‹Р№ РёРЅРґРµРєСЃ РїРѕС‚РѕРєР°
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
 
-    // Используем разделяемую память внутри блока для частичных сумм
+    // РСЃРїРѕР»СЊР·СѓРµРј СЂР°Р·РґРµР»СЏРµРјСѓСЋ РїР°РјСЏС‚СЊ РІРЅСѓС‚СЂРё Р±Р»РѕРєР° РґР»СЏ С‡Р°СЃС‚РёС‡РЅС‹С… СЃСѓРјРј
     extern __shared__ float sdata[];
 
-    // Каждый поток загружает свой элемент в разделяемую память
+    // РљР°Р¶РґС‹Р№ РїРѕС‚РѕРє Р·Р°РіСЂСѓР¶Р°РµС‚ СЃРІРѕР№ СЌР»РµРјРµРЅС‚ РІ СЂР°Р·РґРµР»СЏРµРјСѓСЋ РїР°РјСЏС‚СЊ
     if (tid < size) {
         sdata[threadIdx.x] = array[tid];
     }
@@ -30,10 +30,10 @@ __global__ void sumArrayGlobalMemory(float* array, float* result, int size) {
         sdata[threadIdx.x] = 0.0f;
     }
 
-    // Синхронизация всех потоков в блоке
+    // РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ РІСЃРµС… РїРѕС‚РѕРєРѕРІ РІ Р±Р»РѕРєРµ
     __syncthreads();
 
-    // Выполняем редукцию внутри блока
+    // Р’С‹РїРѕР»РЅСЏРµРј СЂРµРґСѓРєС†РёСЋ РІРЅСѓС‚СЂРё Р±Р»РѕРєР°
     for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
         if (threadIdx.x < stride) {
             sdata[threadIdx.x] += sdata[threadIdx.x + stride];
@@ -41,13 +41,13 @@ __global__ void sumArrayGlobalMemory(float* array, float* result, int size) {
         __syncthreads();
     }
 
-    // Первый поток каждого блока записывает результат
+    // РџРµСЂРІС‹Р№ РїРѕС‚РѕРє РєР°Р¶РґРѕРіРѕ Р±Р»РѕРєР° Р·Р°РїРёСЃС‹РІР°РµС‚ СЂРµР·СѓР»СЊС‚Р°С‚
     if (threadIdx.x == 0) {
         result[blockIdx.x] = sdata[0];
     }
 }
 
-// Последовательная реализация на CPU
+// РџРѕСЃР»РµРґРѕРІР°С‚РµР»СЊРЅР°СЏ СЂРµР°Р»РёР·Р°С†РёСЏ РЅР° CPU
 float sumArrayCPU(float* array, int size) {
     float sum = 0.0f;
     for (int i = 0; i < size; i++) {
@@ -57,74 +57,74 @@ float sumArrayCPU(float* array, int size) {
 }
 
 int main() {
-    const int N = 100000;  // Размер массива
-    const int blockSize = 256;  // Размер блока в CUDA
-    const int gridSize = (N + blockSize - 1) / blockSize;  // Количество блоков
+    const int N = 100000;  // Р Р°Р·РјРµСЂ РјР°СЃСЃРёРІР°
+    const int blockSize = 256;  // Р Р°Р·РјРµСЂ Р±Р»РѕРєР° РІ CUDA
+    const int gridSize = (N + blockSize - 1) / blockSize;  // РљРѕР»РёС‡РµСЃС‚РІРѕ Р±Р»РѕРєРѕРІ
 
-    // Выделение памяти на хосте (CPU)
+    // Р’С‹РґРµР»РµРЅРёРµ РїР°РјСЏС‚Рё РЅР° С…РѕСЃС‚Рµ (CPU)
     float* h_array = new float[N];
     float* h_result = new float[gridSize];
 
-    // Инициализация массива случайными числами
+    // РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ РјР°СЃСЃРёРІР° СЃР»СѓС‡Р°Р№РЅС‹РјРё С‡РёСЃР»Р°РјРё
     std::srand(42);
     for (int i = 0; i < N; i++) {
-        h_array[i] = static_cast<float>(rand()) / RAND_MAX;  // Числа от 0 до 1
+        h_array[i] = static_cast<float>(rand()) / RAND_MAX;  // Р§РёСЃР»Р° РѕС‚ 0 РґРѕ 1
     }
 
-    // Замер времени для CPU реализации
+    // Р—Р°РјРµСЂ РІСЂРµРјРµРЅРё РґР»СЏ CPU СЂРµР°Р»РёР·Р°С†РёРё
     auto start_cpu = std::chrono::high_resolution_clock::now();
     float cpu_sum = sumArrayCPU(h_array, N);
     auto end_cpu = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> cpu_time = end_cpu - start_cpu;
 
-    // Выделение памяти на устройстве (GPU)
+    // Р’С‹РґРµР»РµРЅРёРµ РїР°РјСЏС‚Рё РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРµ (GPU)
     float* d_array = nullptr;
     float* d_result = nullptr;
 
     CHECK_CUDA_ERROR(cudaMalloc(&d_array, N * sizeof(float)));
     CHECK_CUDA_ERROR(cudaMalloc(&d_result, gridSize * sizeof(float)));
 
-    // Копирование данных с хоста на устройство
+    // РљРѕРїРёСЂРѕРІР°РЅРёРµ РґР°РЅРЅС‹С… СЃ С…РѕСЃС‚Р° РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІРѕ
     CHECK_CUDA_ERROR(cudaMemcpy(d_array, h_array, N * sizeof(float), cudaMemcpyHostToDevice));
 
-    // Замер времени для GPU реализации
+    // Р—Р°РјРµСЂ РІСЂРµРјРµРЅРё РґР»СЏ GPU СЂРµР°Р»РёР·Р°С†РёРё
     cudaEvent_t start, end;
     CHECK_CUDA_ERROR(cudaEventCreate(&start));
     CHECK_CUDA_ERROR(cudaEventCreate(&end));
 
     CHECK_CUDA_ERROR(cudaEventRecord(start));
 
-    // Запуск ядра CUDA
+    // Р—Р°РїСѓСЃРє СЏРґСЂР° CUDA
     sumArrayGlobalMemory << <gridSize, blockSize, blockSize * sizeof(float) >> > (d_array, d_result, N);
 
     CHECK_CUDA_ERROR(cudaEventRecord(end));
     CHECK_CUDA_ERROR(cudaEventSynchronize(end));
 
-    // Измерение времени выполнения ядра
+    // РР·РјРµСЂРµРЅРёРµ РІСЂРµРјРµРЅРё РІС‹РїРѕР»РЅРµРЅРёСЏ СЏРґСЂР°
     float gpu_time_ms = 0.0f;
     CHECK_CUDA_ERROR(cudaEventElapsedTime(&gpu_time_ms, start, end));
 
-    // Копирование результата обратно на хост
+    // РљРѕРїРёСЂРѕРІР°РЅРёРµ СЂРµР·СѓР»СЊС‚Р°С‚Р° РѕР±СЂР°С‚РЅРѕ РЅР° С…РѕСЃС‚
     CHECK_CUDA_ERROR(cudaMemcpy(h_result, d_result, gridSize * sizeof(float), cudaMemcpyDeviceToHost));
 
-    // Финальная сумма результатов всех блоков
+    // Р¤РёРЅР°Р»СЊРЅР°СЏ СЃСѓРјРјР° СЂРµР·СѓР»СЊС‚Р°С‚РѕРІ РІСЃРµС… Р±Р»РѕРєРѕРІ
     float gpu_sum = 0.0f;
     for (int i = 0; i < gridSize; i++) {
         gpu_sum += h_result[i];
     }
 
-    // Вывод результатов
-    std::cout << "=== ЗАДАНИЕ 1: Сумма элементов массива ===" << std::endl;
-    std::cout << "Размер массива: " << N << " элементов" << std::endl;
-    std::cout << "CPU результат: " << cpu_sum << std::endl;
-    std::cout << "GPU результат: " << gpu_sum << std::endl;
-    std::cout << "Разница: " << std::abs(cpu_sum - gpu_sum) << std::endl;
-    std::cout << "Время CPU: " << cpu_time.count() * 1000 << " мс" << std::endl;
-    std::cout << "Время GPU: " << gpu_time_ms << " мс" << std::endl;
-    std::cout << "Ускорение: " << cpu_time.count() * 1000 / gpu_time_ms << "x" << std::endl;
+    // Р’С‹РІРѕРґ СЂРµР·СѓР»СЊС‚Р°С‚РѕРІ
+    std::cout << "=== Р—РђР”РђРќРР• 1: РЎСѓРјРјР° СЌР»РµРјРµРЅС‚РѕРІ РјР°СЃСЃРёРІР° ===" << std::endl;
+    std::cout << "Р Р°Р·РјРµСЂ РјР°СЃСЃРёРІР°: " << N << " СЌР»РµРјРµРЅС‚РѕРІ" << std::endl;
+    std::cout << "CPU СЂРµР·СѓР»СЊС‚Р°С‚: " << cpu_sum << std::endl;
+    std::cout << "GPU СЂРµР·СѓР»СЊС‚Р°С‚: " << gpu_sum << std::endl;
+    std::cout << "Р Р°Р·РЅРёС†Р°: " << std::abs(cpu_sum - gpu_sum) << std::endl;
+    std::cout << "Р’СЂРµРјСЏ CPU: " << cpu_time.count() * 1000 << " РјСЃ" << std::endl;
+    std::cout << "Р’СЂРµРјСЏ GPU: " << gpu_time_ms << " РјСЃ" << std::endl;
+    std::cout << "РЈСЃРєРѕСЂРµРЅРёРµ: " << cpu_time.count() * 1000 / gpu_time_ms << "x" << std::endl;
 
 
-    // Освобождение памяти
+    // РћСЃРІРѕР±РѕР¶РґРµРЅРёРµ РїР°РјСЏС‚Рё
     delete[] h_array;
     delete[] h_result;
     CHECK_CUDA_ERROR(cudaFree(d_array));
